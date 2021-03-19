@@ -30,6 +30,7 @@ class BackyardFlyer(Drone):
     def __init__(self, connection):
         super().__init__(connection)
         self.target_position = np.array([0.0, 0.0, 0.0])
+        self.mission_altitude = 3.0
         self.all_waypoints = []
         self.in_mission = True
         self.check_state = {}
@@ -52,12 +53,22 @@ class BackyardFlyer(Drone):
         if self.flight_phase == Phases.TAKEOFF:
 
             # coordinate conversion 
-            altitude = -1.0 * self.local_position[2]
+            current_position = np.array([0.0, 0.0, 0.0])
+            current_position[DIR.ALT] = -1.0 * self.local_position[DIR.ALT]
+            current_position[DIR.LAT] = self.local_position[DIR.LAT]
+            current_position[DIR.LON] = self.local_position[DIR.LON]
 
             # check if altitude is within 95% of target
-            if altitude > 0.95 * self.target_position[2]:
+            waypoint_precision_m = 0.1
+            target_reached = True
+            
+            for axis in [DIR.LAT, DIR.LON, DIR.ALT]:
+                diff = abs(self.target_position[axis] - current_position[axis])
+                target_reached &= (diff < waypoint_precision)
+                
+            if target_reached:
+                # TODO: go to waypoint traversal here!
                 self.landing_transition()
-        pass
 
     def velocity_callback(self):
         """
@@ -69,7 +80,6 @@ class BackyardFlyer(Drone):
             if ((self.global_position[DIR.ALT] - self.global_home[DIR.ALT] < 0.1) and
             abs(self.local_position[DIR.ALT]) < 0.01):
                 self.disarming_transition()
-        pass
 
     def state_callback(self):
         """
@@ -77,7 +87,14 @@ class BackyardFlyer(Drone):
 
         This triggers when `MsgID.STATE` is received and self.armed and self.guided contain new data
         """
-        pass
+        if not self.in_mission:
+            return
+        if self.flight_phase == Phases.MANUAL:
+            self.arming_transition()
+        elif self.flight_phase == Phases.ARMING:
+            self.takeoff_transition()
+        elif self.flight_phase == Phases.DISARMING:
+            self.manual_transition()
 
     def calculate_box(self):
         """TODO: Fill out this method
@@ -97,7 +114,9 @@ class BackyardFlyer(Drone):
             [-SQUARE_SIDE_M, DIR.LAT]
         ]
         
-        current_point = [self.home_position[DIR.LON], self.home_position[DIR.LAT]]
+        current_point = [self.home_position[DIR.LON],
+                         self.home_position[DIR.LAT],
+                         self.mission_altitude]
         
         for distance, moving_direction in steps:
             current_point[moving_direction] += distance
@@ -137,8 +156,7 @@ class BackyardFlyer(Drone):
         2. Command a takeoff to 3.0m
         3. Transition to the TAKEOFF state
         """
-        target_altitude = 3.0
-        self.target_position[DIR.ALT] = target_altitude
+        self.target_position[DIR.ALT] = self.mission_altitude
         self.takeoff(target_altitude)
         self.flight_state = States.TAKEOFF
         print("takeoff transition")
