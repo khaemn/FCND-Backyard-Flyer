@@ -22,7 +22,7 @@ DIR_LAT=1
 DIR_ALT=2
     
 # Trajectory is square with the given side lenght (m)
-SQUARE_SIDE_M = 10.0
+SQUARE_SIDE_M = 30.0
 
 class BackyardFlyer(Drone):
 
@@ -50,7 +50,7 @@ class BackyardFlyer(Drone):
         """
         print("local_position_callback callb ", self.flight_state)
         if self.flight_state in [States.TAKEOFF, States.WAYPOINT]:
-            waypoint_transition()
+            self.waypoint_transition()
 
     def velocity_callback(self):
         """
@@ -107,9 +107,9 @@ class BackyardFlyer(Drone):
         print("Generated waypoints: ", waypoints)
 
         # After all the steps, the last wpt must be at the home position
-        assert current_point[DIR_LAT] == self._home_latitude
-        assert current_point[DIR_LON] == self._home_longitude
-            
+        assert (current_point[DIR_LAT] - self._home_latitude) < 0.1
+        assert (current_point[DIR_LON] - self._home_longitude) < 0.1
+        return waypoints
 
     def arming_transition(self):
         """
