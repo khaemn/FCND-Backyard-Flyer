@@ -41,6 +41,8 @@ class BackyardFlyer(Drone):
         self.register_callback(MsgID.LOCAL_VELOCITY, self.velocity_callback)
         self.register_callback(MsgID.STATE, self.state_callback)
         
+        self.waypoint_precision_m = 0.2
+        self.min_eligible_altitude_m = 0.02
         self.waypoints = []
         self.wpt_index = 0
 
@@ -57,8 +59,10 @@ class BackyardFlyer(Drone):
         This triggers when `MsgID.LOCAL_VELOCITY` is received and self.local_velocity contains new data
         """
         if self.flight_state == States.LANDING:
-            if ((self.global_position[DIR_ALT] - self.global_home[DIR_ALT] < 0.1) and
-            abs(self.local_position[DIR_ALT]) < 0.02):
+            diff = abs(self.global_position[DIR_ALT] - self.global_home[DIR_ALT])
+            is_at_home = diff < self.waypoint_precision_m
+            is_at_low_altitude = self.local_position[DIR_ALT] < self.min_eligible_altitude_m
+            if is_at_home and is_at_low_altitude:
                 self.disarming_transition()
 
     def state_callback(self):
@@ -107,8 +111,8 @@ class BackyardFlyer(Drone):
         print("Generated waypoints: ", waypoints)
 
         # After all the steps, the last wpt must be at the home position
-        assert (current_point[DIR_LAT] - self._home_latitude) < 0.1
-        assert (current_point[DIR_LON] - self._home_longitude) < 0.1
+        assert abs(current_point[DIR_LAT] - self._home_latitude) < self.waypoint_precision_m
+        assert abs(current_point[DIR_LON] - self._home_longitude) < self.waypoint_precision_m
         return waypoints
 
     def arming_transition(self):
@@ -153,14 +157,12 @@ class BackyardFlyer(Drone):
         current_position[DIR_LAT] = self.local_position[DIR_LAT]
         current_position[DIR_LON] = self.local_position[DIR_LON]
 
-        waypoint_precision_m = 0.25
         target_reached = True
-        
+
         for axis in [DIR_LAT, DIR_LON, DIR_ALT]:
             diff = abs(self.target_position[axis] - current_position[axis])
-            print(axis, " diff ", diff)
-            target_reached &= (diff < waypoint_precision_m)
-        print("Reached: ", target_reached)
+            target_reached &= (diff < self.waypoint_precision_m)
+
         if target_reached:
             if self.wpt_index >= len(self.waypoints):
                 self.landing_transition()
@@ -172,7 +174,7 @@ class BackyardFlyer(Drone):
                               0.0)
             self.wpt_index += 1
             self.flight_state = States.WAYPOINT
-            
+
         print("waypoint transition")
 
     def landing_transition(self):
